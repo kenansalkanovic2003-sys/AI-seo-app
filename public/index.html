@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="bs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AI SEO Analizator</title>
+<meta name="description" content="Unesite URL i dobijte tehničku SEO provjeru i AI plan optimizacije.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: single working column — search bar on top, score summary, then report sections a consultant would hand over. */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --fg: #16202e;
+  --muted: #5b6678;
+  --line: #dde2ea;
+  --accent: #2647c9;
+  --accent-soft: #e6ebfb;
+  --ok: #1d7a4c;
+  --ok-soft: #e2f3ea;
+  --warn: #a35d00;
+  --warn-soft: #fbefdc;
+  --bad: #b8282e;
+  --bad-soft: #fbe3e3;
+  --code-bg: #0f1724;
+  --code-fg: #d7e0ee;
+  --serp-link: #1a0dab;
+  --serp-url: #4d5156;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e131b; --surface: #161d28; --fg: #e5eaf2; --muted: #96a2b5; --line: #273142;
+    --accent: #7d97ff; --accent-soft: #1d2847; --ok: #5ccf94; --ok-soft: #13301f;
+    --warn: #f0b058; --warn-soft: #33260f; --bad: #ff7b7f; --bad-soft: #3a1517;
+    --code-bg: #0a0f16; --code-fg: #d7e0ee; --serp-link: #99b2ff; --serp-url: #b4bcc8;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e131b; --surface: #161d28; --fg: #e5eaf2; --muted: #96a2b5; --line: #273142;
+  --accent: #7d97ff; --accent-soft: #1d2847; --ok: #5ccf94; --ok-soft: #13301f;
+  --warn: #f0b058; --warn-soft: #33260f; --bad: #ff7b7f; --bad-soft: #3a1517;
+  --code-bg: #0a0f16; --code-fg: #d7e0ee; --serp-link: #99b2ff; --serp-url: #b4bcc8;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 var(--body); }
+.wrap { max-width: 980px; margin: 0 auto; padding-inline: 16px; padding-block: 32px 64px; display: grid; gap: 24px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); font-weight: 700; letter-spacing: -0.02em; }
+h2 { font-size: 1.3rem; font-weight: 700; }
+h3 { font-size: 1rem; font-weight: 500; }
+p { margin: 0; }
+.lede { color: var(--muted); max-width: 62ch; margin-top: 6px; }
+.label { font: 500 0.72rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+form { display: flex; flex-wrap: wrap; gap: 10px; }
+input, select, button { font: inherit; }
+#url { flex: 1 1 320px; min-width: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg); }
+#language { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg); }
+button { cursor: pointer; border: 0; border-radius: 8px; padding: 12px 20px; font-weight: 600; background: var(--accent); color: var(--surface); }
+button:disabled { opacity: 0.6; cursor: progress; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); padding: 6px 12px; font-size: 0.85rem; }
+
+.status { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+.error { background: var(--bad-soft); color: var(--bad); padding: 12px 16px; border-radius: 8px; }
+
+section.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px; display: grid; gap: 14px; min-width: 0; }
+.panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+
+.scores { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.score { display: flex; gap: 16px; align-items: center; }
+.ring { --v: 0; --c: var(--accent); width: 84px; height: 84px; border-radius: 50%; flex: none;
+  background: conic-gradient(var(--c) calc(var(--v) * 1%), var(--line) 0); display: grid; place-items: center; }
+.ring span { width: 66px; height: 66px; border-radius: 50%; background: var(--surface); display: grid; place-items: center;
+  font: 700 1.5rem var(--display); font-variant-numeric: tabular-nums; }
+.meta-facts { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 0.9rem; color: var(--muted); }
+.meta-facts b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.pill { display: inline-block; font: 500 0.7rem var(--mono); letter-spacing: 0.05em; text-transform: uppercase; padding: 3px 8px; border-radius: 99px; white-space: nowrap; }
+.p-visok, .s-critical { background: var(--bad-soft); color: var(--bad); }
+.p-srednji, .s-warning { background: var(--warn-soft); color: var(--warn); }
+.p-nizak, .s-info { background: var(--accent-soft); color: var(--accent); }
+.s-ok { background: var(--ok-soft); color: var(--ok); }
+
+.issues { display: grid; gap: 10px; }
+.issue { border-left: 3px solid var(--line); padding: 4px 0 4px 14px; display: grid; gap: 4px; }
+.issue[data-p="visok"] { border-color: var(--bad); }
+.issue[data-p="srednji"] { border-color: var(--warn); }
+.issue[data-p="nizak"] { border-color: var(--accent); }
+.issue-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.issue .why { color: var(--muted); font-size: 0.93rem; }
+.issue .fix { font-size: 0.95rem; white-space: pre-wrap; }
+.filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.filters button[aria-pressed="true"] { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+
+ul.clean { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+
+.serp { border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; font-family: arial, sans-serif; max-width: 640px; }
+.serp .u { color: var(--serp-url); font-size: 0.85rem; overflow-wrap: anywhere; }
+.serp .t { color: var(--serp-link); font-size: 1.25rem; line-height: 1.3; margin: 2px 0; }
+.serp .d { color: var(--muted); font-size: 0.9rem; }
+.compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field .val { background: var(--bg); border-radius: 6px; padding: 8px 10px; overflow-wrap: anywhere; }
+.field .val.empty { color: var(--muted); font-style: italic; }
+.count { font: 0.75rem var(--mono); color: var(--muted); }
+
+.kw { display: flex; flex-wrap: wrap; gap: 8px; }
+.kw span { border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; font-size: 0.9rem; }
+.kw span small { color: var(--muted); margin-left: 6px; }
+.kw span.missing { border-style: dashed; }
+
+pre.code { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--code-bg); color: var(--code-fg); padding: 14px; border-radius: 8px; overflow-x: auto; font: 0.82rem/1.5 var(--mono); margin: 0; }
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 500 0.72rem var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+td:last-child { overflow-wrap: anywhere; }
+
+@media (max-width: 600px) { th:nth-child(2), td:nth-child(2) { display: none; } }
+details summary { cursor: pointer; color: var(--accent); font-weight: 600; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }
+.grid2 > div { display: grid; gap: 10px; align-content: start; min-width: 0; }
+footer { color: var(--muted); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <span class="label">SEO audit · tehnički + AI</span>
+    <h1>AI SEO Analizator</h1>
+    <p class="lede">Unesite adresu stranice. Prvo provjeravamo tehničke stvari (title, meta, naslovi, slike, indeksiranje, brzina), a zatim AI piše konkretan plan: novi title i description, ključne riječi, strukturu sadržaja i gotov JSON-LD kod.</p>
+  </header>
+
+  <form id="form">
+    <label class="label" for="url" hidden>URL stranice</label>
+    <input id="url" name="url" type="text" inputmode="url" placeholder="npr. primjer.ba ili https://www.primjer.com/proizvodi" required autocomplete="url">
+    <select id="language" name="language" aria-label="Jezik izvještaja">
+      <option value="bosanski">Bosanski</option>
+      <option value="hrvatski">Hrvatski</option>
+      <option value="srpski">Srpski</option>
+      <option value="English">English</option>
+      <option value="Deutsch">Deutsch</option>
+    </select>
+    <button id="go" type="submit">Analiziraj</button>
+  </form>
+
+  <div id="status" class="status" hidden><div class="spinner"></div><span id="status-text"></span></div>
+  <div id="error" class="error" hidden></div>
+  <div id="results" style="display:grid;gap:24px"></div>
+
+  <footer>Tehničke provjere rade bez AI-ja. AI preporuke koriste Claude API i zahtijevaju <code>ANTHROPIC_API_KEY</code> na serveru.</footer>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const ringColor = (v) => (v >= 80 ? "var(--ok)" : v >= 50 ? "var(--warn)" : "var(--bad)");
+const sevLabel = { critical: "kritično", warning: "upozorenje", info: "savjet", ok: "ok" };
+
+function setStatus(text) {
+  $("#status").hidden = !text;
+  $("#status-text").textContent = text || "";
+}
+function showError(msg) {
+  $("#error").hidden = !msg;
+  $("#error").textContent = msg || "";
+}
+
+async function post(path, body) {
+  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || `Greška ${res.status}`);
+  return json;
+}
+
+function copyButton(text) {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "ghost"; b.textContent = "Kopiraj";
+  b.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(text); b.textContent = "Kopirano"; }
+    catch { b.textContent = "Kopiranje nije uspjelo"; }
+    setTimeout(() => (b.textContent = "Kopiraj"), 1500);
+  });
+  return b;
+}
+
+function serpUrl(u) {
+  try { const x = new URL(u); return `${x.hostname}${x.pathname === "/" ? "" : " › " + x.pathname.split("/").filter(Boolean).join(" › ")}`; }
+  catch { return u; }
+}
+// Google cuts titles at ~600px; approximating with character counts keeps this dependency-free.
+const clip = (s, n) => (s && s.length > n ? s.slice(0, n - 1).trimEnd() + " …" : s || "");
+
+function renderScan(scan) {
+  const d = scan.data;
+  const failed = scan.checks.filter((c) => !c.passed);
+  const el = document.createElement("div");
+  el.style.display = "grid"; el.style.gap = "24px";
+  el.innerHTML = `
+    <section class="panel">
+      <div class="scores">
+        <div class="score">
+          <div class="ring" style="--v:${scan.technicalScore};--c:${ringColor(scan.technicalScore)}"><span>${scan.technicalScore}</span></div>
+          <div><div class="label">Tehnička ocjena</div><h3>${failed.length ? `${failed.length} problema za riješiti` : "Sve provjere prošle"}</h3></div>
+        </div>
+        <div class="score" id="ai-score">
+          <div class="ring" style="--v:0"><span>…</span></div>
+          <div><div class="label">AI ocjena</div><h3>Čeka se AI analiza</h3></div>
+        </div>
+      </div>
+      <div class="meta-facts">
+        <span>URL: <b>${esc(scan.finalUrl)}</b></span>
+        <span>Status: <b>${scan.status}</b></span>
+        <span>Odziv: <b>${scan.responseTimeMs} ms</b></span>
+        <span>HTML: <b>${scan.htmlSizeKb} KB</b></span>
+        <span>Riječi: <b>${d.wordCount}</b></span>
+        <span>Linkovi: <b>${d.links.internal} int. / ${d.links.external} ext.</b></span>
+        <span>Slike: <b>${d.images.total}</b></span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Tehničke provjere</h2><span class="label">${scan.checks.length - failed.length}/${scan.checks.length} prošlo</span></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Status</th><th>Kategorija</th><th>Nalaz</th></tr></thead>
+        <tbody>${[...failed, ...scan.checks.filter((c) => c.passed)].map((c) => `
+          <tr><td><span class="pill s-${c.severity}">${sevLabel[c.severity]}</span></td><td>${esc(c.category)}</td><td>${esc(c.message)}</td></tr>`).join("")}
+        </tbody>
+      </table></div>
+    </section>
+
+    <section class="panel">
+      <h2>Trenutno stanje stranice</h2>
+      <div class="compare">
+        <div class="field"><span class="label">Title</span><div class="val ${d.title ? "" : "empty"}">${esc(d.title || "nema")}</div><span class="count">${(d.title || "").length} znakova</span></div>
+        <div class="field"><span class="label">Meta description</span><div class="val ${d.metaDescription ? "" : "empty"}">${esc(d.metaDescription || "nema")}</div><span class="count">${(d.metaDescription || "").length} znakova</span></div>
+      </div>
+      <div class="grid2">
+        <div><span class="label">H1</span>${d.headings.h1.length ? `<ul class="clean">${d.headings.h1.map((h) => `<li>${esc(h)}</li>`).join("")}</ul>` : `<p class="lede">Nema H1 naslova.</p>`}</div>
+        <div><span class="label">H2 (${d.headings.h2.length})</span>${d.headings.h2.length ? `<ul class="clean">${d.headings.h2.slice(0, 12).map((h) => `<li>${esc(h)}</li>`).join("")}</ul>` : `<p class="lede">Nema H2 naslova.</p>`}</div>
+      </div>
+    </section>
+    <div id="ai-slot"></div>`;
+  return el;
+}
+
+function renderAI(ai, scan) {
+  const ring = $("#ai-score");
+  ring.innerHTML = `<div class="ring" style="--v:${ai.score};--c:${ringColor(ai.score)}"><span>${ai.score}</span></div>
+    <div><div class="label">AI ocjena</div><h3>${esc(ai.detectedTopic)}</h3></div>`;
+
+  const slot = $("#ai-slot");
+  slot.style.display = "grid"; slot.style.gap = "24px";
+  const counts = { visok: 0, srednji: 0, nizak: 0 };
+  ai.issues.forEach((i) => counts[i.priority]++);
+
+  slot.innerHTML = `
+    <section class="panel">
+      <h2>Sažetak</h2>
+      <p>${esc(ai.summary)}</p>
+      <div><span class="label">Brze pobjede</span><ul class="clean" style="margin-top:6px">${ai.quickWins.map((q) => `<li>${esc(q)}</li>`).join("")}</ul></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Prijedlog za Google rezultat</h2><span class="label">prije → poslije</span></div>
+      <div class="compare">
+        <div class="field"><span class="label">Sada</span>
+          <div class="serp"><div class="u">${esc(serpUrl(scan.finalUrl))}</div><div class="t">${esc(clip(scan.data.title || "(bez naslova)", 60))}</div><div class="d">${esc(clip(scan.data.metaDescription || "Google će sam izabrati tekst sa stranice.", 160))}</div></div>
+        </div>
+        <div class="field"><span class="label">Predloženo</span>
+          <div class="serp"><div class="u">${esc(serpUrl(scan.finalUrl))}</div><div class="t">${esc(clip(ai.optimizedTitle, 60))}</div><div class="d">${esc(clip(ai.optimizedMetaDescription, 160))}</div></div>
+        </div>
+      </div>
+      <div class="compare" id="copy-fields"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Problemi i rješenja</h2>
+        <div class="filters" role="group" aria-label="Filter prioriteta">
+          <button type="button" class="ghost" data-f="all" aria-pressed="true">Svi (${ai.issues.length})</button>
+          <button type="button" class="ghost" data-f="visok" aria-pressed="false">Visok (${counts.visok})</button>
+          <button type="button" class="ghost" data-f="srednji" aria-pressed="false">Srednji (${counts.srednji})</button>
+          <button type="button" class="ghost" data-f="nizak" aria-pressed="false">Nizak (${counts.nizak})</button>
+        </div>
+      </div>
+      <div class="issues">${ai.issues.map((i) => `
+        <div class="issue" data-p="${esc(i.priority)}">
+          <div class="issue-top"><span class="pill p-${esc(i.priority)}">${esc(i.priority)}</span><span class="label">${esc(i.category)}</span></div>
+          <h3>${esc(i.problem)}</h3>
+          <p class="why">${esc(i.why)}</p>
+          <p class="fix"><b>Rješenje:</b> ${esc(i.fix)}</p>
+        </div>`).join("")}
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Ključne riječi</h2>
+      <div class="kw">${ai.targetKeywords.map((k) => `<span class="${k.presentOnPage ? "" : "missing"}" title="${k.presentOnPage ? "Već se nalazi na stranici" : "Nema je na stranici"}">${esc(k.keyword)}<small>${esc(k.intent)}${k.presentOnPage ? "" : " · nedostaje"}</small></span>`).join("")}</div>
+    </section>
+
+    <section class="panel">
+      <div class="grid2">
+        <div><h2>Struktura naslova</h2><p><span class="label">H1</span> ${esc(ai.optimizedH1)}</p><ul class="clean">${ai.headingStructure.map((h) => `<li>${esc(h)}</li>`).join("")}</ul></div>
+        <div><h2>Sadržaj</h2><ul class="clean">${ai.contentRecommendations.map((c) => `<li>${esc(c)}</li>`).join("")}</ul></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Strukturirani podaci (JSON-LD)</h2><span id="ld-copy"></span></div>
+      <pre class="code">${esc(ai.structuredDataSuggestion)}</pre>
+    </section>
+
+    <p class="label">Model: ${esc(ai.model)} · tokeni: ${ai.usage.input} ulaz / ${ai.usage.output} izlaz</p>`;
+
+  const fields = [["Title", ai.optimizedTitle, 60], ["Meta description", ai.optimizedMetaDescription, 160], ["H1", ai.optimizedH1, 70]];
+  const box = $("#copy-fields");
+  for (const [name, val, max] of fields) {
+    const f = document.createElement("div");
+    f.className = "field";
+    f.innerHTML = `<div class="panel-head"><span class="label">${name}</span></div><div class="val">${esc(val)}</div><span class="count">${val.length} / ${max} znakova</span>`;
+    f.querySelector(".panel-head").append(copyButton(val));
+    box.append(f);
+  }
+  $("#ld-copy").append(copyButton(ai.structuredDataSuggestion));
+
+  slot.querySelectorAll(".filters button").forEach((b) => b.addEventListener("click", () => {
+    slot.querySelectorAll(".filters button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    slot.querySelectorAll(".issue").forEach((i) => (i.hidden = b.dataset.f !== "all" && i.dataset.p !== b.dataset.f));
+  }));
+}
+
+$("#form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const url = $("#url").value.trim();
+  const language = $("#language").value;
+  $("#go").disabled = true;
+  showError("");
+  $("#results").innerHTML = "";
+  try {
+    setStatus("Skeniram stranicu…");
+    const scan = await post("/api/scan", { url });
+    $("#results").append(renderScan(scan));
+    setStatus("AI analizira stranicu i piše preporuke (obično 20–60 sekundi)…");
+    try {
+      renderAI(await post("/api/ai", { scan, language }), scan);
+    } catch (err) {
+      showError(err.message);
+      $("#ai-score h3").textContent = "AI analiza nije dostupna";
+    }
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    setStatus("");
+    $("#go").disabled = false;
+  }
+});
+</script>
+</body>
+</html>

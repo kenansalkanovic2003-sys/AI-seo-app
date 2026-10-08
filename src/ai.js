@@ -1,0 +1,127 @@
+import Anthropic from "@anthropic-ai/sdk";
+
+const MODEL = process.env.CLAUDE_MODEL || "claude-opus-5-5";
+const client = new Anthropic();
+
+const SYSTEM_PROMPT = `Ti si iskusan SEO stručnjak (tehnički SEO, on-page SEO, sadržaj, strukturirani podaci, Core Web Vitals, lokalni SEO).
+Dobit ćeš podatke prikupljene skeniranjem jedne web stranice i rezultate automatskih tehničkih provjera.
+Tvoj zadatak je napraviti konkretan, provedljiv SEO plan optimizacije za tu stranicu.
+
+Pravila:
+- Piši na jeziku koji korisnik zatraži (polje "language"); tehnički termini mogu ostati na engleskom.
+- Budi konkretan: umjesto "poboljšaj title" napiši tačan novi title. Prijedlozi za title, meta description i H1 moraju biti na jeziku sadržaja stranice.
+- Oslanjaj se samo na dostavljene podatke. Ako nešto nije moguće utvrditi iz podataka (npr. backlinkovi, stvarni Core Web Vitals), reci to umjesto da izmišljaš.
+- Prioritete poredaj po uticaju na rangiranje i lakoći implementacije.
+- Gdje ima smisla, daj gotov kod (HTML tagove, JSON-LD) koji se može kopirati.`;
+
+const issueSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["priority", "category", "problem", "why", "fix"],
+  properties: {
+    priority: { type: "string", enum: ["visok", "srednji", "nizak"] },
+    category: { type: "string" },
+    problem: { type: "string" },
+    why: { type: "string", description: "Zašto je ovo važno za SEO" },
+    fix: { type: "string", description: "Tačni koraci ili kod za rješenje" },
+  },
+};
+
+const REPORT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "score",
+    "summary",
+    "detectedTopic",
+    "targetKeywords",
+    "issues",
+    "optimizedTitle",
+    "optimizedMetaDescription",
+    "optimizedH1",
+    "headingStructure",
+    "contentRecommendations",
+    "structuredDataSuggestion",
+    "quickWins",
+  ],
+  properties: {
+    score: { type: "integer", description: "Ukupna SEO ocjena 0-100" },
+    summary: { type: "string" },
+    detectedTopic: { type: "string", description: "O čemu je stranica i ko je ciljna publika" },
+    targetKeywords: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["keyword", "intent", "presentOnPage"],
+        properties: {
+          keyword: { type: "string" },
+          intent: { type: "string", enum: ["informativna", "komercijalna", "transakcijska", "navigacijska"] },
+          presentOnPage: { type: "boolean" },
+        },
+      },
+    },
+    issues: { type: "array", items: issueSchema },
+    optimizedTitle: { type: "string" },
+    optimizedMetaDescription: { type: "string" },
+    optimizedH1: { type: "string" },
+    headingStructure: { type: "array", items: { type: "string" }, description: "Predložena struktura H2/H3 naslova" },
+    contentRecommendations: { type: "array", items: { type: "string" } },
+    structuredDataSuggestion: { type: "string", description: "Gotov JSON-LD <script> blok prilagođen stranici" },
+    quickWins: { type: "array", items: { type: "string" }, description: "3-5 izmjena koje se mogu uraditi odmah" },
+  },
+};
+
+export async function analyzeWithAI(crawlResult, { language = "bosanski" } = {}) {
+  const { data, ...meta } = crawlResult;
+  const payload = {
+    language,
+    page: {
+      url: meta.finalUrl,
+      status: meta.status,
+      responseTimeMs: meta.responseTimeMs,
+      htmlSizeKb: meta.htmlSizeKb,
+      redirects: meta.redirects,
+      sitemapFound: meta.sitemapFound,
+      robotsTxt: meta.robotsTxt,
+      ...data,
+    },
+    automatedChecks: meta.checks.map(({ weight, ...c }) => c),
+    technicalScore: meta.technicalScore,
+  };
+
+  const response = await client.beta.messages.create({
+    model: MODEL,
+    max_tokens: 16000,
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    thinking: { type: "adaptive" },
+    output_config: {
+      effort: "medium",
+      format: { type: "json_schema", schema: REPORT_SCHEMA },
+    },
+    system: SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: `Analiziraj SEO ove stranice i napravi plan optimizacije. Odgovori na jeziku: ${language}.\n\n<scan_data>\n${JSON.stringify(payload, null, 2)}\n</scan_data>`,
+      },
+    ],
+  });
+
+  if (response.stop_reason === "refusal") {
+    throw new Error("AI je odbio analizu ove stranice.");
+  }
+  if (response.stop_reason === "max_tokens") {
+    throw new Error("AI odgovor je prekinut (predug). Pokušajte ponovo.");
+  }
+  const text = response.content
+    .filter((b) => b.type === "text")
+    .map((b) => b.text)
+    .join("");
+  return {
+    ...JSON.parse(text),
+    model: response.model,
+    usage: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+  };
+}
