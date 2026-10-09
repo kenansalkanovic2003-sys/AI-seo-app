@@ -53,6 +53,8 @@ curl -X POST localhost:3000/api/analyze -H 'Content-Type: application/json' -d '
 - `ANTHROPIC_API_KEY` – samo za automatsku AI analizu (nije potreban za besplatni claude.ai način)
 - `CLAUDE_MODEL` – model (zadano `claude-opus-5-5`)
 - `PORT` – port servera (zadano 3000)
+- `HOST` – adresa na kojoj server sluša (zadano `127.0.0.1`, tj. samo ovaj računar; `0.0.0.0` za pristup s drugih uređaja u mreži)
+- `NODE_EXTRA_CA_CERTS` – putanja do root certifikata firewalla/antivirusa koji pregleda HTTPS (Fortinet, Kaspersky…), ako `npm install` ili skeniranje javljaju grešku certifikata
 - `PUPPETEER_EXECUTABLE_PATH` – putanja do Chrome/Chromium-a, ako nije instaliran na uobičajenom mjestu
 - `ALLOW_PRIVATE_HOSTS=1` – dozvoli skeniranje localhost/internih adresa (samo za lokalno testiranje; inače su blokirane radi sigurnosti)
 

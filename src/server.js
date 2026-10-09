@@ -10,6 +10,8 @@ import { renderPdf, PdfUnavailableError } from "./pdf.js";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
+// Only this computer can open the app by default; set HOST=0.0.0.0 to share it on the local network.
+const HOST = process.env.HOST || "127.0.0.1";
 
 const jsonBody = express.json({ limit: "2mb" });
 // The PDF route carries a whole rendered report, so it gets its own larger limit.
@@ -159,6 +161,6 @@ function friendlyError(err) {
   return err?.message || "Nepoznata greška.";
 }
 
-app.listen(PORT, () => {
+app.listen(PORT, HOST, () => {
   console.log(`AI SEO App radi na http://localhost:${PORT}`);
 });
