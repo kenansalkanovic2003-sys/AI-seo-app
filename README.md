@@ -14,12 +14,12 @@ Web aplikacija koja za uneseni URL radi SEO analizu stranice:
 
    Ako sajt nema sitemap, skeniraju se linkovi s početne stranice. Skeniranje se može zaustaviti, a izvještaj se pravi od stranica obrađenih do tada.
 
-4. **Izvoz u PDF** – dugme „Preuzmi PDF“ ispod rezultata (za jednu stranicu i za cijeli sajt). Server pravi PDF (A4, brojevi stranica, svijetla tema, sve sekcije otvorene) pomoću headless Chromea (puppeteer). Ako Chrome nije dostupan na serveru, otvara se ispis u browseru pa izaberete „Sačuvaj kao PDF“.
+4. **Izvoz u PDF** – dugme „Preuzmi PDF“ ispod rezultata (za jednu stranicu i za cijeli sajt). Server pravi PDF (A4, brojevi stranica, svijetla tema, sve sekcije otvorene) pomoću Google Chromea (ili Microsoft Edgea) koji je već instaliran na računaru, preko puppeteera. Ako nijedan nije pronađen, otvara se ispis u browseru pa izaberete „Sačuvaj kao PDF“.
 
 ## Pokretanje
 
 ```bash
-npm install          # skida i Chrome za PDF izvoz (~150 MB)
+npm install
 export ANTHROPIC_API_KEY=sk-ant-...   # ključ sa https://console.anthropic.com
 npm start
 ```
@@ -46,7 +46,7 @@ curl -X POST localhost:3000/api/analyze -H 'Content-Type: application/json' -d '
 - `ANTHROPIC_API_KEY` – obavezno za AI dio
 - `CLAUDE_MODEL` – model (zadano `claude-opus-5-5`)
 - `PORT` – port servera (zadano 3000)
-- `PUPPETEER_EXECUTABLE_PATH` – putanja do Chrome/Chromium-a ako ne koristite onaj koji puppeteer skine (`npx puppeteer browsers install chrome`)
+- `PUPPETEER_EXECUTABLE_PATH` – putanja do Chrome/Chromium-a, ako nije instaliran na uobičajenom mjestu
 - `ALLOW_PRIVATE_HOSTS=1` – dozvoli skeniranje localhost/internih adresa (samo za lokalno testiranje; inače su blokirane radi sigurnosti)
 
 ## Struktura

@@ -6,16 +6,41 @@ const RENDER_TIMEOUT_MS = 20000;
 
 let browserPromise = null;
 
+const EDGE_PATHS = [
+  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+];
+
+// Tries, in order: PUPPETEER_EXECUTABLE_PATH, a browser downloaded by puppeteer,
+// the Chrome installed on this computer, then Microsoft Edge (also Chromium).
+function launchCandidates() {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) return [{ executablePath: process.env.PUPPETEER_EXECUTABLE_PATH }];
+  return [{}, { channel: "chrome" }, ...EDGE_PATHS.map((executablePath) => ({ executablePath }))];
+}
+
+async function launchBrowser() {
+  const { default: puppeteer } = await import("puppeteer");
+  const errors = [];
+  for (const candidate of launchCandidates()) {
+    try {
+      return await puppeteer.launch({
+        headless: true,
+        args: ["--no-sandbox", "--disable-dev-shm-usage"],
+        ...candidate,
+      });
+    } catch (err) {
+      errors.push(err.message.split("\n")[0]);
+    }
+  }
+  throw new Error(
+    process.env.PUPPETEER_EXECUTABLE_PATH ? errors[0] : "na računaru nije pronađen ni Google Chrome ni Microsoft Edge",
+  );
+}
+
 async function getBrowser() {
   if (!browserPromise) {
-    browserPromise = (async () => {
-      const { default: puppeteer } = await import("puppeteer");
-      return puppeteer.launch({
-        headless: true,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-        args: ["--no-sandbox", "--disable-dev-shm-usage"],
-      });
-    })();
+    browserPromise = launchBrowser();
     browserPromise.catch(() => (browserPromise = null));
   }
   const browser = await browserPromise;
@@ -34,7 +59,7 @@ export async function renderPdf(html, { footerLabel = "" } = {}) {
     browser = await getBrowser();
   } catch (err) {
     throw new PdfUnavailableError(
-      `PDF renderer nije dostupan (${err.message.split("\n")[0]}). Pokrenite "npx puppeteer browsers install chrome" ili postavite PUPPETEER_EXECUTABLE_PATH.`,
+      `Chrome nije pronađen za izradu PDF-a (${err.message}). Instalirajte Google Chrome ili postavite PUPPETEER_EXECUTABLE_PATH na putanju do chrome.exe.`,
     );
   }
   const page = await browser.newPage();
