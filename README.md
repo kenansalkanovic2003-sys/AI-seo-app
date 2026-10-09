@@ -14,10 +14,12 @@ Web aplikacija koja za uneseni URL radi SEO analizu stranice:
 
    Ako sajt nema sitemap, skeniraju se linkovi s početne stranice. Skeniranje se može zaustaviti, a izvještaj se pravi od stranica obrađenih do tada.
 
+4. **Izvoz u PDF** – dugme „Preuzmi PDF“ ispod rezultata (za jednu stranicu i za cijeli sajt). Server pravi PDF (A4, brojevi stranica, svijetla tema, sve sekcije otvorene) pomoću headless Chromea (puppeteer). Ako Chrome nije dostupan na serveru, otvara se ispis u browseru pa izaberete „Sačuvaj kao PDF“.
+
 ## Pokretanje
 
 ```bash
-npm install
+npm install          # skida i Chrome za PDF izvoz (~150 MB)
 export ANTHROPIC_API_KEY=sk-ant-...   # ključ sa https://console.anthropic.com
 npm start
 ```
@@ -32,6 +34,7 @@ Otvorite http://localhost:3000, unesite URL i kliknite **Analiziraj**.
 | `POST /api/ai` | `{ "scan": <rezultat /api/scan>, "language": "bosanski" }` | AI preporuke za postojeći scan |
 | `POST /api/site-scan` | `{ "url": "primjer.ba", "maxPages": 50 }` | Skeniranje sajta preko sitemapa; odgovor je NDJSON stream događaja (`discovered`, `page`, `pageError`, `done`) |
 | `POST /api/site-ai` | `{ "summary": ..., "pages": [...], "language": "bosanski" }` | AI plan za sajt (iz `done` događaja) |
+| `POST /api/pdf` | `{ "html": "...", "filename": "izvjestaj" }` | Pretvara HTML izvještaja u PDF (JavaScript i mrežni zahtjevi su isključeni, osim Google Fonts) |
 | `POST /api/analyze` | `{ "url": "primjer.ba", "language": "bosanski" }` | Scan + AI u jednom pozivu |
 
 ```bash
@@ -43,12 +46,14 @@ curl -X POST localhost:3000/api/analyze -H 'Content-Type: application/json' -d '
 - `ANTHROPIC_API_KEY` – obavezno za AI dio
 - `CLAUDE_MODEL` – model (zadano `claude-opus-5-5`)
 - `PORT` – port servera (zadano 3000)
+- `PUPPETEER_EXECUTABLE_PATH` – putanja do Chrome/Chromium-a ako ne koristite onaj koji puppeteer skine (`npx puppeteer browsers install chrome`)
 - `ALLOW_PRIVATE_HOSTS=1` – dozvoli skeniranje localhost/internih adresa (samo za lokalno testiranje; inače su blokirane radi sigurnosti)
 
 ## Struktura
 
 - `src/crawler.js` – preuzimanje stranice, izvlačenje SEO podataka (cheerio), tehničke provjere i ocjena
 - `src/site.js` – čitanje sitemapa i robots.txt, paralelno skeniranje stranica, zbirni izvještaj za sajt
+- `src/pdf.js` – izrada PDF-a iz HTML izvještaja (puppeteer)
 - `src/ai.js` – Claude API poziv sa strukturiranim JSON izlazom
 - `src/server.js` – Express server i API rute
 - `public/index.html` – web sučelje

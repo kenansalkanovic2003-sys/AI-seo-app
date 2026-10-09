@@ -5,12 +5,15 @@ import Anthropic from "@anthropic-ai/sdk";
 import { crawl } from "./crawler.js";
 import { analyzeWithAI, analyzeSiteWithAI } from "./ai.js";
 import { scanSite, summarizeSite } from "./site.js";
+import { renderPdf, PdfUnavailableError } from "./pdf.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json({ limit: "2mb" }));
+const jsonBody = express.json({ limit: "2mb" });
+// The PDF route carries a whole rendered report, so it gets its own larger limit.
+app.use((req, res, next) => (req.path === "/api/pdf" ? next() : jsonBody(req, res, next)));
 app.use(express.static(path.join(here, "..", "public")));
 
 // Step 1: scan the page and run technical checks (fast, no AI cost).
@@ -102,6 +105,24 @@ app.post("/api/site-ai", async (req, res) => {
     console.error(err);
     const status = err instanceof Anthropic.RateLimitError ? 429 : 502;
     res.status(status).json({ error: `AI analiza nije uspjela: ${friendlyError(err)}` });
+  }
+});
+
+app.post("/api/pdf", express.json({ limit: "15mb" }), async (req, res) => {
+  const { html, filename, footer } = req.body || {};
+  if (typeof html !== "string" || !html.length) {
+    return res.status(400).json({ error: "Nedostaje sadržaj izvještaja." });
+  }
+  try {
+    const pdf = await renderPdf(html, { footerLabel: String(footer || "").slice(0, 200) });
+    const safeName = String(filename || "seo-izvjestaj").replace(/[^a-z0-9._-]+/gi, "-").slice(0, 80) || "seo-izvjestaj";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}.pdf"`);
+    res.end(pdf);
+  } catch (err) {
+    console.error(err);
+    const unavailable = err instanceof PdfUnavailableError;
+    res.status(unavailable ? 501 : 500).json({ error: unavailable ? err.message : "Izrada PDF-a nije uspjela.", fallback: unavailable });
   }
 });
 

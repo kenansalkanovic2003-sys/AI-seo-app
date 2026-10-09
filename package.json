@@ -23,6 +23,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.132.1",
     "cheerio": "^1.2.0",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "puppeteer": "^25.13.0"
   }
 }

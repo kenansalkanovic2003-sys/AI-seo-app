@@ -156,6 +156,16 @@ td a { color: var(--accent); }
 .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .toolbar input, .toolbar select { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg); font-size: 0.9rem; }
 .toolbar input { flex: 1 1 200px; min-width: 0; }
+#report-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+#report-actions .hint { color: var(--muted); font-size: 0.85rem; }
+.report-head { display: grid; gap: 4px; padding-bottom: 12px; border-bottom: 2px solid var(--fg); }
+@media print {
+  header, .tabs, form, #status, #report-actions, footer, button, .toolbar, .filters { display: none !important; }
+  .wrap { max-width: none; padding: 0; }
+  section.panel { border-color: var(--line); }
+  .issue, tr, .dup, .score { break-inside: avoid; }
+  details > *:not(summary) { display: block; }
+}
 </style>
 </head>
 <body>
@@ -194,6 +204,10 @@ td a { color: var(--accent); }
 
   <div id="status" class="status" hidden><div class="spinner"></div><span id="status-text"></span></div>
   <div id="error" class="error" hidden></div>
+  <div id="report-actions" hidden>
+    <span class="hint" id="pdf-hint"></span>
+    <button id="pdf" type="button">Preuzmi PDF</button>
+  </div>
   <div id="results" style="display:grid;gap:24px"></div>
 
   <footer>Tehničke provjere rade bez AI-ja. AI preporuke koriste Claude API i zahtijevaju <code>ANTHROPIC_API_KEY</code> na serveru.</footer>
@@ -646,6 +660,7 @@ async function runSiteScan(url, language) {
     summary = await post("/api/site-summary", { pages, errors, meta });
   }
   progress.remove();
+  if (summary.origin) lastReport.url = summary.origin;
   $("#results").append(renderSite(summary, pages));
   if (!pages.some((p) => p.status < 400)) return;
 
@@ -658,6 +673,92 @@ async function runSiteScan(url, language) {
   }
 }
 
+// ---------- PDF export ----------
+let lastReport = null;
+
+function slug(s) {
+  return String(s).toLowerCase().replace(/^https?:\/\//, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+}
+
+function buildReportHtml() {
+  const clone = $("#results").cloneNode(true);
+  clone.querySelectorAll("button, input, select, .toolbar, .filters, #site-progress").forEach((e) => e.remove());
+  clone.querySelectorAll("details").forEach((d) => d.setAttribute("open", ""));
+  clone.querySelectorAll("[hidden]").forEach((e) => e.removeAttribute("hidden"));
+  clone.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id"));
+
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const date = `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}. ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const kind = lastReport.type === "site" ? "SEO izvještaj za sajt" : "SEO izvještaj za stranicu";
+  const fonts = document.querySelector('link[rel="stylesheet"]').outerHTML;
+  const style = document.querySelector("style").outerHTML;
+  return `<!doctype html><html lang="bs" data-theme="light"><head><meta charset="utf-8"><title>${esc(kind)}</title>${fonts}${style}
+    <style>
+      body { font-size: 13px; background: var(--surface); }
+      .wrap { max-width: none; padding: 0; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+      /* Chrome fragments grid containers badly across PDF pages; use block flow for the outer layout. */
+      .wrap, .wrap div[style], section.panel { display: block !important; }
+      .wrap > * + *, .wrap div[style] > * + * { margin-top: 18px; }
+      section.panel > * + * { margin-top: 14px; }
+      summary { list-style: none; cursor: default; }
+      summary::-webkit-details-marker { display: none; }
+      summary.label { display: none; }
+      .issue, tr, .dup, .score, .field { break-inside: avoid; }
+      h2 { break-after: avoid; }
+      a { color: var(--accent); text-decoration: none; }
+    </style></head>
+    <body><main class="wrap">
+      <div class="report-head">
+        <span class="label">${esc(kind)} · ${esc(date)}</span>
+        <h1>${esc(lastReport.url)}</h1>
+        <p class="lede">Izrađeno pomoću AI SEO Analizatora: tehničke provjere + AI preporuke.</p>
+      </div>
+      ${clone.innerHTML}
+    </main></body></html>`;
+}
+
+$("#pdf").addEventListener("click", async () => {
+  if (!lastReport) return;
+  const btn = $("#pdf");
+  btn.disabled = true;
+  btn.textContent = "Pravim PDF…";
+  $("#pdf-hint").textContent = "";
+  try {
+    const host = (() => { try { return new URL(lastReport.url).hostname; } catch { return lastReport.url; } })();
+    const filename = `seo-${lastReport.type === "site" ? "sajt" : "stranica"}-${slug(host)}-${new Date().toISOString().slice(0, 10)}`;
+    const res = await fetch("/api/pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ html: buildReportHtml(), filename, footer: `SEO izvještaj · ${lastReport.url}` }),
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      if (json.fallback) {
+        // No headless browser on the server: use the browser's own "Save as PDF".
+        $("#pdf-hint").textContent = "Server nema PDF renderer, otvaram ispis – izaberite „Sačuvaj kao PDF“.";
+        window.print();
+        return;
+      }
+      throw new Error(json.error || `Greška ${res.status}`);
+    }
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${filename}.pdf`;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    $("#pdf-hint").textContent = "PDF je preuzet.";
+  } catch (err) {
+    showError(`PDF nije napravljen: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Preuzmi PDF";
+  }
+});
+
 $("#form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const url = $("#url").value.trim();
@@ -665,10 +766,14 @@ $("#form").addEventListener("submit", async (e) => {
   $("#go").disabled = true;
   showError("");
   $("#results").innerHTML = "";
+  $("#report-actions").hidden = true;
+  $("#pdf-hint").textContent = "";
+  lastReport = { type: mode, url };
   try {
     if (mode === "site") return await runSiteScan(url, language);
     setStatus("Skeniram stranicu…");
     const scan = await post("/api/scan", { url });
+    lastReport.url = scan.finalUrl;
     $("#results").append(renderScan(scan));
     setStatus("AI analizira stranicu i piše preporuke (obično 20–60 sekundi)…");
     try {
@@ -682,6 +787,7 @@ $("#form").addEventListener("submit", async (e) => {
   } finally {
     setStatus("");
     $("#go").disabled = false;
+    $("#report-actions").hidden = !$("#results section.panel:not(#site-progress)");
   }
 });
 </script>
