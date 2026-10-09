@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import { crawl } from "./crawler.js";
-import { analyzeWithAI, analyzeSiteWithAI } from "./ai.js";
+import { analyzeWithAI, analyzeSiteWithAI, hasApiKey, pagePrompt, sitePrompt } from "./ai.js";
 import { scanSite, summarizeSite } from "./site.js";
 import { renderPdf, PdfUnavailableError } from "./pdf.js";
 
@@ -15,6 +15,28 @@ const jsonBody = express.json({ limit: "2mb" });
 // The PDF route carries a whole rendered report, so it gets its own larger limit.
 app.use((req, res, next) => (req.path === "/api/pdf" ? next() : jsonBody(req, res, next)));
 app.use(express.static(path.join(here, "..", "public")));
+
+// Tells the UI whether AI runs through the API key or the free claude.ai copy/paste flow.
+app.get("/api/config", (req, res) => {
+  res.json({ apiKey: hasApiKey() });
+});
+
+// Prompts for the free flow: the user pastes them into claude.ai and pastes the JSON answer back.
+app.post("/api/ai-prompt", (req, res) => {
+  const scan = req.body?.scan;
+  if (!scan?.data || !Array.isArray(scan.checks)) {
+    return res.status(400).json({ error: "Nedostaju podaci skeniranja." });
+  }
+  res.json({ prompt: pagePrompt(scan, { language: req.body?.language || "bosanski" }) });
+});
+
+app.post("/api/site-ai-prompt", (req, res) => {
+  const { summary, pages, language } = req.body || {};
+  if (!summary || !Array.isArray(pages) || !pages.length) {
+    return res.status(400).json({ error: "Nedostaju rezultati skeniranja sajta." });
+  }
+  res.json({ prompt: sitePrompt(summary, pages, { language: language || "bosanski" }) });
+});
 
 // Step 1: scan the page and run technical checks (fast, no AI cost).
 app.post("/api/scan", async (req, res) => {

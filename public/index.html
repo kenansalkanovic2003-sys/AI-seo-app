@@ -156,11 +156,18 @@ td a { color: var(--accent); }
 .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .toolbar input, .toolbar select { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg); font-size: 0.9rem; }
 .toolbar input { flex: 1 1 200px; min-width: 0; }
+#ai-mode { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg); }
+.manual ol { margin: 0; padding-left: 20px; display: grid; gap: 14px; }
+.manual li > * + * { margin-top: 8px; }
+.manual textarea { width: 100%; min-height: 140px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); font: 0.8rem/1.5 var(--mono); resize: vertical; }
+.manual .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.manual a.open { color: var(--accent); font-weight: 600; }
+.manual .bad { color: var(--bad); }
 #report-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 #report-actions .hint { color: var(--muted); font-size: 0.85rem; }
 .report-head { display: grid; gap: 4px; padding-bottom: 12px; border-bottom: 2px solid var(--fg); }
 @media print {
-  header, .tabs, form, #status, #report-actions, footer, button, .toolbar, .filters { display: none !important; }
+  header, .tabs, form, #status, #report-actions, footer, button, .toolbar, .filters, .no-export { display: none !important; }
   .wrap { max-width: none; padding: 0; }
   section.panel { border-color: var(--line); }
   .issue, tr, .dup, .score { break-inside: avoid; }
@@ -192,6 +199,11 @@ td a { color: var(--accent); }
       <option value="English">English</option>
       <option value="Deutsch">Deutsch</option>
     </select>
+    <select id="ai-mode" name="aiMode" aria-label="Način AI analize">
+      <option value="manual">AI besplatno (preko claude.ai)</option>
+      <option value="api">AI automatski (API ključ, plaća se)</option>
+      <option value="off">Bez AI analize</option>
+    </select>
     <select id="max-pages" name="maxPages" aria-label="Najviše stranica" hidden>
       <option value="25">do 25 stranica</option>
       <option value="50" selected>do 50 stranica</option>
@@ -210,7 +222,7 @@ td a { color: var(--accent); }
   </div>
   <div id="results" style="display:grid;gap:24px"></div>
 
-  <footer>Tehničke provjere rade bez AI-ja. AI preporuke koriste Claude API i zahtijevaju <code>ANTHROPIC_API_KEY</code> na serveru.</footer>
+  <footer>Tehničke provjere i PDF su besplatni. AI preporuke možete dobiti besplatno preko claude.ai (kopiraj/zalijepi, troši vašu Claude pretplatu) ili automatski preko Claude API-ja (<code>ANTHROPIC_API_KEY</code>, plaća se po korištenju).</footer>
 </main>
 
 <script>
@@ -235,13 +247,13 @@ async function post(path, body) {
   return json;
 }
 
-function copyButton(text) {
+function copyButton(text, label = "Kopiraj", className = "ghost") {
   const b = document.createElement("button");
-  b.type = "button"; b.className = "ghost"; b.textContent = "Kopiraj";
+  b.type = "button"; b.className = className; b.textContent = label;
   b.addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(text); b.textContent = "Kopirano"; }
-    catch { b.textContent = "Kopiranje nije uspjelo"; }
-    setTimeout(() => (b.textContent = "Kopiraj"), 1500);
+    try { await navigator.clipboard.writeText(text); b.textContent = "Kopirano ✓"; }
+    catch { b.textContent = "Kopiranje nije uspjelo – označite tekst ispod"; }
+    setTimeout(() => (b.textContent = label), 2000);
   });
   return b;
 }
@@ -372,7 +384,7 @@ function renderAI(ai, scan) {
       <pre class="code">${esc(ai.structuredDataSuggestion)}</pre>
     </section>
 
-    <p class="label">Model: ${esc(ai.model)} · tokeni: ${ai.usage.input} ulaz / ${ai.usage.output} izlaz</p>`;
+    <p class="label">${ai.usage ? `Model: ${esc(ai.model)} · tokeni: ${ai.usage.input} ulaz / ${ai.usage.output} izlaz` : "Izvor: claude.ai (vaša Claude pretplata)"}</p>`;
 
   const fields = [["Title", ai.optimizedTitle, 60], ["Meta description", ai.optimizedMetaDescription, 160], ["H1", ai.optimizedH1, 70]];
   const box = $("#copy-fields");
@@ -609,7 +621,7 @@ function renderSiteAI(ai) {
         <div><h2>Interno linkovanje</h2><ul class="clean">${ai.internalLinking.map((c) => `<li>${esc(c)}</li>`).join("")}</ul></div>
       </div>
     </section>
-    <p class="label">Model: ${esc(ai.model)} · tokeni: ${ai.usage.input} ulaz / ${ai.usage.output} izlaz</p>`;
+    <p class="label">${ai.usage ? `Model: ${esc(ai.model)} · tokeni: ${ai.usage.input} ulaz / ${ai.usage.output} izlaz` : "Izvor: claude.ai (vaša Claude pretplata)"}</p>`;
 }
 
 async function runSiteScan(url, language) {
@@ -664,13 +676,107 @@ async function runSiteScan(url, language) {
   $("#results").append(renderSite(summary, pages));
   if (!pages.some((p) => p.status < 400)) return;
 
+  const aiMode = $("#ai-mode").value;
+  if (aiMode === "off") {
+    $("#site-ai-score h3").textContent = "AI analiza je isključena";
+    return;
+  }
+  if (aiMode === "manual") {
+    $("#site-ai-score h3").innerHTML = 'Čeka se odgovor sa claude.ai · <a href="#manual-ai" style="color:var(--accent)">upute ↓</a>';
+    await renderManualAI({ slot: $("#site-ai-slot"), promptPath: "/api/site-ai-prompt", body: { summary, pages, language }, kind: "site", onResult: renderSiteAI });
+    return;
+  }
   setStatus(`AI analizira ${pages.length} stranica i piše plan za sajt (obično 30–90 sekundi)…`);
   try {
     renderSiteAI(await post("/api/site-ai", { summary, pages, language }));
   } catch (err) {
-    showError(err.message);
+    showError(`${err.message} Bez API ključa izaberite „AI besplatno (preko claude.ai)“.`);
     $("#site-ai-score h3").textContent = "AI analiza nije dostupna";
   }
+}
+
+// ---------- AI mode: API key, free claude.ai copy/paste, or none ----------
+const AI_MODE_KEY = "ai-seo-mode";
+(async () => {
+  let saved = null;
+  try { saved = localStorage.getItem(AI_MODE_KEY); } catch {}
+  let apiKey = false;
+  try { apiKey = (await (await fetch("/api/config")).json()).apiKey; } catch {}
+  $("#ai-mode").value = saved || (apiKey ? "api" : "manual");
+})();
+$("#ai-mode").addEventListener("change", () => {
+  try { localStorage.setItem(AI_MODE_KEY, $("#ai-mode").value); } catch {}
+});
+
+const PRIORITIES = ["visok", "srednji", "nizak"];
+const arr = (v) => (Array.isArray(v) ? v : []);
+const str = (v) => (v == null ? "" : String(v));
+const prio = (v) => (PRIORITIES.includes(String(v).toLowerCase()) ? String(v).toLowerCase() : "srednji");
+
+// Turns whatever the user pasted from claude.ai into a report object the renderers can trust.
+function parseAIAnswer(text, kind) {
+  const raw = String(text || "").trim();
+  if (!raw) throw new Error("Polje je prazno. Zalijepite Claudeov odgovor.");
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  let body = fenced ? fenced[1] : raw;
+  const start = body.indexOf("{");
+  const end = body.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("U odgovoru nema JSON-a. Kopirajte cijeli Claudeov odgovor (dugme za kopiranje ispod JSON bloka).");
+  let obj;
+  try { obj = JSON.parse(body.slice(start, end + 1)); }
+  catch { throw new Error("JSON u odgovoru nije ispravan (možda nije kopiran do kraja). Kopirajte cijeli odgovor ponovo ili zamolite Claudea da ponovi samo JSON."); }
+
+  const score = Math.max(0, Math.min(100, Math.round(Number(obj.score) || 0)));
+  if (kind === "page") {
+    if (!("issues" in obj) && !("optimizedTitle" in obj)) throw new Error("Ovo ne liči na odgovor za analizu stranice. Provjerite da ste zalijepili tekst za ovu analizu.");
+    return {
+      score, summary: str(obj.summary), detectedTopic: str(obj.detectedTopic),
+      targetKeywords: arr(obj.targetKeywords).map((k) => ({ keyword: str(k?.keyword ?? k), intent: str(k?.intent), presentOnPage: !!k?.presentOnPage })),
+      issues: arr(obj.issues).map((i) => ({ priority: prio(i?.priority), category: str(i?.category), problem: str(i?.problem), why: str(i?.why), fix: str(i?.fix) })),
+      optimizedTitle: str(obj.optimizedTitle), optimizedMetaDescription: str(obj.optimizedMetaDescription), optimizedH1: str(obj.optimizedH1),
+      headingStructure: arr(obj.headingStructure).map(str), contentRecommendations: arr(obj.contentRecommendations).map(str),
+      structuredDataSuggestion: str(obj.structuredDataSuggestion), quickWins: arr(obj.quickWins).map(str),
+      model: "claude.ai", usage: null,
+    };
+  }
+  if (!("sitewideIssues" in obj)) throw new Error("Ovo ne liči na odgovor za analizu sajta. Provjerite da ste zalijepili tekst za ovu analizu.");
+  return {
+    score, summary: str(obj.summary), siteTopic: str(obj.siteTopic),
+    sitewideIssues: arr(obj.sitewideIssues).map((i) => ({ priority: prio(i?.priority), problem: str(i?.problem), affectedPages: Math.round(Number(i?.affectedPages) || 0), fix: str(i?.fix) })),
+    pagePriorities: arr(obj.pagePriorities).map((p) => ({ url: str(p?.url), reason: str(p?.reason), actions: arr(p?.actions).map(str) })),
+    contentStrategy: arr(obj.contentStrategy).map(str), internalLinking: arr(obj.internalLinking).map(str), quickWins: arr(obj.quickWins).map(str),
+    model: "claude.ai", usage: null,
+  };
+}
+
+// Free flow: show the prompt to copy into claude.ai and a box for Claude's answer.
+async function renderManualAI({ slot, promptPath, body, kind, onResult }) {
+  const { prompt } = await post(promptPath, body);
+  const kb = Math.round(prompt.length / 1024);
+  const panel = document.createElement("section");
+  panel.className = "panel manual no-export";
+  panel.id = "manual-ai";
+  panel.innerHTML = `
+    <div class="panel-head"><h2>AI analiza preko claude.ai</h2><span class="label">besplatno uz vašu pretplatu</span></div>
+    <ol>
+      <li><div>Kopirajte pripremljeni tekst (${kb} KB). U njemu su podaci skeniranja i upute za Claudea.</div>
+        <div class="row" data-copy></div>
+        <details><summary>Prikaži tekst</summary><textarea readonly aria-label="Tekst za Claude">${esc(prompt)}</textarea></details></li>
+      <li><div>Otvorite <a class="open" href="https://claude.ai/new" target="_blank" rel="noopener">claude.ai</a> (novi razgovor), zalijepite tekst sa Ctrl+V i pošaljite.</div></li>
+      <li><div>Kad Claude odgovori, kopirajte cijeli odgovor (dugme za kopiranje ispod JSON bloka) i zalijepite ga ovdje:</div>
+        <textarea data-answer placeholder='{"score": 72, "summary": "..."}' aria-label="Claudeov odgovor"></textarea>
+        <div class="row"><button type="button" data-show>Prikaži AI izvještaj</button><span class="bad" data-err></span></div></li>
+    </ol>`;
+  panel.querySelector("[data-copy]").append(copyButton(prompt, "Kopiraj tekst za Claude", ""));
+  panel.querySelector("[data-show]").addEventListener("click", () => {
+    try {
+      onResult(parseAIAnswer(panel.querySelector("[data-answer]").value, kind));
+      $("#report-actions").hidden = false;
+    } catch (err) {
+      panel.querySelector("[data-err]").textContent = err.message;
+    }
+  });
+  slot.replaceChildren(panel);
 }
 
 // ---------- PDF export ----------
@@ -682,7 +788,7 @@ function slug(s) {
 
 function buildReportHtml() {
   const clone = $("#results").cloneNode(true);
-  clone.querySelectorAll("button, input, select, .toolbar, .filters, #site-progress").forEach((e) => e.remove());
+  clone.querySelectorAll("button, input, select, textarea, .toolbar, .filters, .no-export, #site-progress").forEach((e) => e.remove());
   clone.querySelectorAll("details").forEach((d) => d.setAttribute("open", ""));
   clone.querySelectorAll("[hidden]").forEach((e) => e.removeAttribute("hidden"));
   clone.querySelectorAll("[id]").forEach((e) => e.removeAttribute("id"));
@@ -775,12 +881,20 @@ $("#form").addEventListener("submit", async (e) => {
     const scan = await post("/api/scan", { url });
     lastReport.url = scan.finalUrl;
     $("#results").append(renderScan(scan));
-    setStatus("AI analizira stranicu i piše preporuke (obično 20–60 sekundi)…");
-    try {
-      renderAI(await post("/api/ai", { scan, language }), scan);
-    } catch (err) {
-      showError(err.message);
-      $("#ai-score h3").textContent = "AI analiza nije dostupna";
+    const aiMode = $("#ai-mode").value;
+    if (aiMode === "off") {
+      $("#ai-score h3").textContent = "AI analiza je isključena";
+    } else if (aiMode === "manual") {
+      $("#ai-score h3").innerHTML = 'Čeka se odgovor sa claude.ai · <a href="#manual-ai" style="color:var(--accent)">upute ↓</a>';
+      await renderManualAI({ slot: $("#ai-slot"), promptPath: "/api/ai-prompt", body: { scan, language }, kind: "page", onResult: (ai) => renderAI(ai, scan) });
+    } else {
+      setStatus("AI analizira stranicu i piše preporuke (obično 20–60 sekundi)…");
+      try {
+        renderAI(await post("/api/ai", { scan, language }), scan);
+      } catch (err) {
+        showError(`${err.message} Bez API ključa izaberite „AI besplatno (preko claude.ai)“.`);
+        $("#ai-score h3").textContent = "AI analiza nije dostupna";
+      }
     }
   } catch (err) {
     showError(err.message);

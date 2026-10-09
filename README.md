@@ -16,11 +16,17 @@ Web aplikacija koja za uneseni URL radi SEO analizu stranice:
 
 4. **Izvoz u PDF** – dugme „Preuzmi PDF“ ispod rezultata (za jednu stranicu i za cijeli sajt). Server pravi PDF (A4, brojevi stranica, svijetla tema, sve sekcije otvorene) pomoću Google Chromea (ili Microsoft Edgea) koji je već instaliran na računaru, preko puppeteera. Ako nijedan nije pronađen, otvara se ispis u browseru pa izaberete „Sačuvaj kao PDF“.
 
+## AI bez dodatnog plaćanja
+
+Polje „AI besplatno (preko claude.ai)“ (zadano kad nema API ključa): aplikacija pripremi tekst sa podacima skeniranja i uputama, vi ga zalijepite u novi razgovor na [claude.ai](https://claude.ai/new) (troši vašu Claude Pro/Max pretplatu, ne API kredit), a Claudeov JSON odgovor zalijepite nazad u aplikaciju. Izvještaj i PDF izgledaju isto kao kod automatske analize.
+
+„AI automatski (API ključ)“ radi sve sam, ali API se plaća po korištenju, odvojeno od pretplate.
+
 ## Pokretanje
 
 ```bash
 npm install
-export ANTHROPIC_API_KEY=sk-ant-...   # ključ sa https://console.anthropic.com
+export ANTHROPIC_API_KEY=sk-ant-...   # opcionalno, samo za automatsku AI analizu
 npm start
 ```
 
@@ -35,6 +41,7 @@ Otvorite http://localhost:3000, unesite URL i kliknite **Analiziraj**.
 | `POST /api/site-scan` | `{ "url": "primjer.ba", "maxPages": 50 }` | Skeniranje sajta preko sitemapa; odgovor je NDJSON stream događaja (`discovered`, `page`, `pageError`, `done`) |
 | `POST /api/site-ai` | `{ "summary": ..., "pages": [...], "language": "bosanski" }` | AI plan za sajt (iz `done` događaja) |
 | `POST /api/pdf` | `{ "html": "...", "filename": "izvjestaj" }` | Pretvara HTML izvještaja u PDF (JavaScript i mrežni zahtjevi su isključeni, osim Google Fonts) |
+| `POST /api/ai-prompt`, `POST /api/site-ai-prompt` | isto kao `/api/ai` i `/api/site-ai` | Tekst za ručno lijepljenje u claude.ai (bez API poziva) |
 | `POST /api/analyze` | `{ "url": "primjer.ba", "language": "bosanski" }` | Scan + AI u jednom pozivu |
 
 ```bash
@@ -43,7 +50,7 @@ curl -X POST localhost:3000/api/analyze -H 'Content-Type: application/json' -d '
 
 ## Podešavanja (env varijable)
 
-- `ANTHROPIC_API_KEY` – obavezno za AI dio
+- `ANTHROPIC_API_KEY` – samo za automatsku AI analizu (nije potreban za besplatni claude.ai način)
 - `CLAUDE_MODEL` – model (zadano `claude-opus-5-5`)
 - `PORT` – port servera (zadano 3000)
 - `PUPPETEER_EXECUTABLE_PATH` – putanja do Chrome/Chromium-a, ako nije instaliran na uobičajenom mjestu

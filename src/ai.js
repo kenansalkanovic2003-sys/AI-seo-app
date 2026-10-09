@@ -72,7 +72,12 @@ const REPORT_SCHEMA = {
   },
 };
 
-export async function analyzeWithAI(crawlResult, { language = "bosanski" } = {}) {
+// True when the server can call the Claude API itself; otherwise the UI offers the free claude.ai flow.
+export function hasApiKey() {
+  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+}
+
+function pageRequest(crawlResult, language) {
   const { data, ...meta } = crawlResult;
   const payload = {
     language,
@@ -90,10 +95,14 @@ export async function analyzeWithAI(crawlResult, { language = "bosanski" } = {})
     technicalScore: meta.technicalScore,
   };
 
-  return callClaude(
-    REPORT_SCHEMA,
-    `Analiziraj SEO ove stranice i napravi plan optimizacije. Odgovori na jeziku: ${language}.\n\n<scan_data>\n${JSON.stringify(payload, null, 2)}\n</scan_data>`,
-  );
+  return {
+    schema: REPORT_SCHEMA,
+    content: `Analiziraj SEO ove stranice i napravi plan optimizacije. Odgovori na jeziku: ${language}.\n\n<scan_data>\n${JSON.stringify(payload, null, 2)}\n</scan_data>`,
+  };
+}
+
+export async function analyzeWithAI(crawlResult, { language = "bosanski" } = {}) {
+  return callClaude(pageRequest(crawlResult, language));
 }
 
 const SITE_REPORT_SCHEMA = {
@@ -138,7 +147,7 @@ const SITE_REPORT_SCHEMA = {
   },
 };
 
-export async function analyzeSiteWithAI(summary, pages, { language = "bosanski" } = {}) {
+function siteRequest(summary, pages, language) {
   const payload = {
     language,
     site: summary,
@@ -155,13 +164,40 @@ export async function analyzeSiteWithAI(summary, pages, { language = "bosanski" 
       failed: p.failed.map((f) => f.id),
     })),
   };
-  return callClaude(
-    SITE_REPORT_SCHEMA,
-    `Ovo su rezultati skeniranja cijelog sajta (stranice iz sitemapa). Napravi SEO plan za cijeli sajt: probleme koji se ponavljaju na mnogo stranica (i kako ih riješiti jednom, u šablonu), stranice koje prve treba popraviti, dupli sadržaj i kanibalizaciju ključnih riječi, interno linkovanje i strategiju sadržaja. Odgovori na jeziku: ${language}.\n\n<site_scan>\n${JSON.stringify(payload)}\n</site_scan>`,
-  );
+  return {
+    schema: SITE_REPORT_SCHEMA,
+    content: `Ovo su rezultati skeniranja cijelog sajta (stranice iz sitemapa). Napravi SEO plan za cijeli sajt: probleme koji se ponavljaju na mnogo stranica (i kako ih riješiti jednom, u šablonu), stranice koje prve treba popraviti, dupli sadržaj i kanibalizaciju ključnih riječi, interno linkovanje i strategiju sadržaja. Odgovori na jeziku: ${language}.\n\n<site_scan>\n${JSON.stringify(payload)}\n</site_scan>`,
+  };
 }
 
-async function callClaude(schema, content) {
+export async function analyzeSiteWithAI(summary, pages, { language = "bosanski" } = {}) {
+  return callClaude(siteRequest(summary, pages, language));
+}
+
+// Free alternative to the API: one self-contained prompt the user pastes into claude.ai
+// (covered by their Claude subscription), then pastes the JSON answer back into the app.
+function manualPrompt({ schema, content }) {
+  return `${SYSTEM_PROMPT}
+
+${content}
+
+FORMAT ODGOVORA:
+Odgovori isključivo jednim JSON objektom unutar \`\`\`json bloka, bez ikakvog teksta prije ili poslije njega.
+JSON mora tačno odgovarati ovoj JSON Schemi (ista imena polja, sva obavezna polja, vrijednosti iz "enum" lista napisane tačno tako):
+\`\`\`json
+${JSON.stringify(schema, null, 2)}
+\`\`\``;
+}
+
+export function pagePrompt(crawlResult, { language = "bosanski" } = {}) {
+  return manualPrompt(pageRequest(crawlResult, language));
+}
+
+export function sitePrompt(summary, pages, { language = "bosanski" } = {}) {
+  return manualPrompt(siteRequest(summary, pages, language));
+}
+
+async function callClaude({ schema, content }) {
   const response = await client.beta.messages.create({
     model: MODEL,
     max_tokens: 16000,
