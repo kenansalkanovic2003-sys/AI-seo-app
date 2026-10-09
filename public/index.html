@@ -130,11 +130,32 @@ th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--lin
 th { font: 500 0.72rem var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 td:last-child { overflow-wrap: anywhere; }
 
-@media (max-width: 600px) { th:nth-child(2), td:nth-child(2) { display: none; } }
+@media (max-width: 600px) { table.checks th:nth-child(2), table.checks td:nth-child(2) { display: none; } }
 details summary { cursor: pointer; color: var(--accent); font-weight: 600; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }
 .grid2 > div { display: grid; gap: 10px; align-content: start; min-width: 0; }
 footer { color: var(--muted); font-size: 0.85rem; }
+.tabs { justify-self: start; display: inline-flex; gap: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; flex-wrap: wrap; }
+.tabs button { background: transparent; color: var(--muted); padding: 8px 14px; }
+.tabs button[aria-selected="true"] { background: var(--accent-soft); color: var(--accent); }
+#max-pages { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg); }
+.progress { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; }
+.progress > div { height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+@media (prefers-reduced-motion: reduce) { .progress > div { transition: none; } }
+.live { font: 0.8rem/1.6 var(--mono); color: var(--muted); max-height: 9.6em; overflow: auto; overflow-wrap: anywhere; }
+.live .bad { color: var(--bad); }
+.meter { display: flex; align-items: center; gap: 8px; min-width: 110px; }
+.meter .track { flex: 1; height: 6px; background: var(--line); border-radius: 99px; overflow: hidden; }
+.meter .track > div { height: 100%; }
+.meter span { font: 0.8rem var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.num { font-variant-numeric: tabular-nums; text-align: right; }
+td a { color: var(--accent); }
+.url-list { margin: 6px 0 0; padding-left: 18px; font: 0.8rem/1.6 var(--mono); overflow-wrap: anywhere; }
+.dup { display: grid; gap: 4px; padding-block: 8px; border-bottom: 1px solid var(--line); }
+.dup:last-child { border-bottom: 0; }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.toolbar input, .toolbar select { padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--fg); font-size: 0.9rem; }
+.toolbar input { flex: 1 1 200px; min-width: 0; }
 </style>
 </head>
 <body>
@@ -142,8 +163,14 @@ footer { color: var(--muted); font-size: 0.85rem; }
   <header>
     <span class="label">SEO audit · tehnički + AI</span>
     <h1>AI SEO Analizator</h1>
-    <p class="lede">Unesite adresu stranice. Prvo provjeravamo tehničke stvari (title, meta, naslovi, slike, indeksiranje, brzina), a zatim AI piše konkretan plan: novi title i description, ključne riječi, strukturu sadržaja i gotov JSON-LD kod.</p>
+    <p class="lede" id="lede-page">Unesite adresu stranice. Prvo provjeravamo tehničke stvari (title, meta, naslovi, slike, indeksiranje, brzina), a zatim AI piše konkretan plan: novi title i description, ključne riječi, strukturu sadržaja i gotov JSON-LD kod.</p>
+    <p class="lede" id="lede-site" hidden>Unesite domen. Čitamo robots.txt i XML sitemap, skeniramo sve pronađene stranice i tražimo probleme koji se ponavljaju: duple naslove i opise, greške 404, noindex, spore stranice. AI zatim pravi plan za cijeli sajt.</p>
   </header>
+
+  <div class="tabs" role="tablist" aria-label="Način skeniranja">
+    <button type="button" role="tab" id="tab-page" aria-selected="true">Jedna stranica</button>
+    <button type="button" role="tab" id="tab-site" aria-selected="false">Cijeli sajt (sitemap)</button>
+  </div>
 
   <form id="form">
     <label class="label" for="url" hidden>URL stranice</label>
@@ -155,7 +182,14 @@ footer { color: var(--muted); font-size: 0.85rem; }
       <option value="English">English</option>
       <option value="Deutsch">Deutsch</option>
     </select>
+    <select id="max-pages" name="maxPages" aria-label="Najviše stranica" hidden>
+      <option value="25">do 25 stranica</option>
+      <option value="50" selected>do 50 stranica</option>
+      <option value="100">do 100 stranica</option>
+      <option value="200">do 200 stranica</option>
+    </select>
     <button id="go" type="submit">Analiziraj</button>
+    <button id="stop" type="button" class="ghost" hidden>Zaustavi</button>
   </form>
 
   <div id="status" class="status" hidden><div class="spinner"></div><span id="status-text"></span></div>
@@ -235,7 +269,7 @@ function renderScan(scan) {
 
     <section class="panel">
       <div class="panel-head"><h2>Tehničke provjere</h2><span class="label">${scan.checks.length - failed.length}/${scan.checks.length} prošlo</span></div>
-      <div class="table-wrap"><table>
+      <div class="table-wrap"><table class="checks">
         <thead><tr><th>Status</th><th>Kategorija</th><th>Nalaz</th></tr></thead>
         <tbody>${[...failed, ...scan.checks.filter((c) => c.passed)].map((c) => `
           <tr><td><span class="pill s-${c.severity}">${sevLabel[c.severity]}</span></td><td>${esc(c.category)}</td><td>${esc(c.message)}</td></tr>`).join("")}
@@ -343,6 +377,287 @@ function renderAI(ai, scan) {
   }));
 }
 
+
+// ---------- Site-wide scan (sitemap) ----------
+let mode = "page";
+let siteAbort = null;
+
+function setMode(next) {
+  mode = next;
+  $("#tab-page").setAttribute("aria-selected", String(mode === "page"));
+  $("#tab-site").setAttribute("aria-selected", String(mode === "site"));
+  $("#lede-page").hidden = mode !== "page";
+  $("#lede-site").hidden = mode !== "site";
+  $("#max-pages").hidden = mode !== "site";
+  $("#go").textContent = mode === "site" ? "Skeniraj sajt" : "Analiziraj";
+  $("#url").placeholder = mode === "site" ? "npr. primjer.ba" : "npr. primjer.ba ili https://www.primjer.com/proizvodi";
+}
+$("#tab-page").addEventListener("click", () => setMode("page"));
+$("#tab-site").addEventListener("click", () => setMode("site"));
+$("#stop").addEventListener("click", () => siteAbort?.abort());
+
+const pathOf = (u) => { try { const x = new URL(u); return x.pathname + x.search; } catch { return u; } };
+
+function meter(value, total, color) {
+  const pct = total ? Math.round((value / total) * 100) : 0;
+  return `<div class="meter"><div class="track"><div style="width:${pct}%;background:${color}"></div></div><span>${value}/${total}</span></div>`;
+}
+
+function urlList(urls, more = 0) {
+  return `<ul class="url-list">${urls.map((u) => `<li>${esc(pathOf(u))}</li>`).join("")}${more > 0 ? `<li>… i još ${more}</li>` : ""}</ul>`;
+}
+
+function renderProgress() {
+  const el = document.createElement("section");
+  el.className = "panel";
+  el.id = "site-progress";
+  el.innerHTML = `<div class="panel-head"><h2>Skeniranje sajta</h2><span class="label" id="sp-count">tražim sitemap…</span></div>
+    <div class="progress"><div id="sp-bar"></div></div>
+    <p class="lede" id="sp-source"></p>
+    <div class="live" id="sp-live" aria-live="polite"></div>`;
+  return el;
+}
+
+async function streamSiteScan(url, maxPages, onEvent, signal) {
+  const res = await fetch("/api/site-scan", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, maxPages }), signal,
+  });
+  if (!res.ok || !res.body) throw new Error(`Greška ${res.status}`);
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += value;
+    let i;
+    while ((i = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, i).trim();
+      buf = buf.slice(i + 1);
+      if (line) onEvent(JSON.parse(line));
+    }
+  }
+}
+
+function renderSite(summary, pages) {
+  const total = summary.pagesScanned;
+  const okCount = pages.filter((p) => p.status < 400).length;
+  const sevColor = { critical: "var(--bad)", warning: "var(--warn)", info: "var(--accent)" };
+  const dupBlock = (title, groups) => groups.length ? `
+    <details><summary>${title} (${groups.length})</summary>
+      ${groups.map((g) => `<div class="dup"><div>${esc(g.value)}</div>${urlList(g.urls.slice(0, 10), g.urls.length - 10)}</div>`).join("")}
+    </details>` : `<p class="lede">${title}: nema.</p>`;
+  const listBlock = (title, items, fmt) => items.length ? `
+    <details><summary>${title} (${items.length})</summary><ul class="url-list">${items.slice(0, 50).map((x) => `<li>${fmt(x)}</li>`).join("")}</ul></details>` : `<p class="lede">${title}: nema.</p>`;
+
+  const el = document.createElement("div");
+  el.style.display = "grid"; el.style.gap = "24px";
+  el.innerHTML = `
+    <section class="panel">
+      <div class="scores">
+        <div class="score">
+          <div class="ring" style="--v:${summary.averageScore};--c:${ringColor(summary.averageScore)}"><span>${summary.averageScore}</span></div>
+          <div><div class="label">Prosječna tehnička ocjena</div><h3>${total} stranica skenirano</h3></div>
+        </div>
+        <div class="score" id="site-ai-score">
+          <div class="ring" style="--v:0"><span>…</span></div>
+          <div><div class="label">AI ocjena sajta</div><h3>Čeka se AI analiza</h3></div>
+        </div>
+      </div>
+      <div class="meta-facts">
+        <span>Izvor: <b>${summary.source === "sitemap" ? "XML sitemap" : "linkovi s početne (sitemap nije pronađen)"}</b></span>
+        <span>robots.txt: <b>${summary.robotsTxtFound ? "da" : "ne"}</b></span>
+        <span>Blokirano u robots.txt: <b>${summary.blockedByRobots.length}</b></span>
+        <span>Greške: <b>${summary.httpErrors.length}</b></span>
+        <span>Prosj. odziv: <b>${summary.averageResponseMs} ms</b></span>
+        <span>Prosj. riječi: <b>${summary.averageWordCount}</b></span>
+      </div>
+      ${summary.sitemapsUsed.length ? `<details><summary>Korišteni sitemapi (${summary.sitemapsUsed.length})</summary><ul class="url-list">${summary.sitemapsUsed.map((u) => `<li>${esc(u)}</li>`).join("")}</ul></details>` : ""}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Problemi koji se ponavljaju</h2><span class="label">na ${okCount} ispravnih stranica</span></div>
+      ${summary.issues.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Status</th><th>Problem</th><th>Stranice</th></tr></thead>
+        <tbody>${summary.issues.map((i) => `
+          <tr><td><span class="pill s-${i.severity}">${sevLabel[i.severity]}</span></td>
+          <td>${esc(i.label)}<details><summary class="label">prikaži stranice</summary>${urlList(i.urls, i.count - i.urls.length)}</details></td>
+          <td>${meter(i.count, okCount, sevColor[i.severity])}</td></tr>`).join("")}
+        </tbody></table></div>` : `<p>Nijedna provjera nije pala. Odlično.</p>`}
+    </section>
+
+    <section class="panel">
+      <h2>Duplikati</h2>
+      <p class="lede">Isti title ili description na više stranica zbunjuje Google koju stranicu da prikaže.</p>
+      ${dupBlock("Isti title", summary.duplicateTitles)}
+      ${dupBlock("Isti meta description", summary.duplicateDescriptions)}
+      ${dupBlock("Isti H1", summary.duplicateH1)}
+    </section>
+
+    <section class="panel">
+      <h2>Indeksiranje i greške</h2>
+      ${listBlock("Greške (4xx/5xx, nedostupno)", summary.httpErrors, (x) => `${esc(pathOf(x.url))} · <b>${esc(x.error)}</b>`)}
+      ${listBlock("Preusmjerene stranice u sitemapu", summary.redirected, (x) => `${esc(pathOf(x.from))} → ${esc(x.to)}`)}
+      ${listBlock("Canonical pokazuje na drugu stranicu", summary.canonicalElsewhere, (x) => `${esc(pathOf(x.url))} → ${esc(x.canonical)}`)}
+      ${listBlock("Noindex stranice", summary.noindexPages, (x) => esc(pathOf(x)))}
+      ${listBlock("Blokirano u robots.txt (nije skenirano)", summary.blockedByRobots, (x) => esc(pathOf(x)))}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Sve stranice</h2>
+        <div class="toolbar">
+          <input id="pf" type="search" placeholder="Filtriraj po URL-u ili naslovu" aria-label="Filter stranica">
+          <select id="ps" aria-label="Sortiranje">
+            <option value="score">Najlošija ocjena prvo</option>
+            <option value="issues">Najviše problema prvo</option>
+            <option value="ms">Najsporije prvo</option>
+            <option value="words">Najmanje teksta prvo</option>
+            <option value="url">Po URL-u</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Stranica</th><th class="num">Ocjena</th><th class="num">Problemi</th><th class="num">Riječi</th><th class="num">ms</th><th></th></tr></thead>
+        <tbody id="pages-body"></tbody>
+      </table></div>
+    </section>
+    <div id="site-ai-slot" style="display:grid;gap:24px"></div>`;
+
+  const body = el.querySelector("#pages-body");
+  const draw = () => {
+    const q = el.querySelector("#pf").value.trim().toLowerCase();
+    const sort = el.querySelector("#ps").value;
+    const sorters = {
+      score: (a, b) => a.score - b.score,
+      issues: (a, b) => b.failed.length - a.failed.length,
+      ms: (a, b) => b.responseTimeMs - a.responseTimeMs,
+      words: (a, b) => a.wordCount - b.wordCount,
+      url: (a, b) => a.finalUrl.localeCompare(b.finalUrl),
+    };
+    const rows = pages
+      .filter((p) => !q || p.finalUrl.toLowerCase().includes(q) || (p.title || "").toLowerCase().includes(q))
+      .sort(sorters[sort]);
+    body.innerHTML = rows.map((p) => `
+      <tr>
+        <td><a href="${esc(p.finalUrl)}" target="_blank" rel="noopener">${esc(pathOf(p.finalUrl))}</a>${p.status >= 400 ? ` <span class="pill s-critical">HTTP ${p.status}</span>` : ""}
+          <div class="lede" style="font-size:0.85rem;margin:0">${esc(p.title || "(bez naslova)")}</div></td>
+        <td class="num"><b style="color:${ringColor(p.score)}">${p.score}</b></td>
+        <td class="num">${p.failed.length}</td>
+        <td class="num">${p.wordCount}</td>
+        <td class="num">${p.responseTimeMs}</td>
+        <td><button type="button" class="ghost" data-url="${esc(p.finalUrl)}">AI analiza</button></td>
+      </tr>`).join("") || `<tr><td colspan="6">Nema stranica za ovaj filter.</td></tr>`;
+  };
+  el.querySelector("#pf").addEventListener("input", draw);
+  el.querySelector("#ps").addEventListener("change", draw);
+  body.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-url]");
+    if (!b) return;
+    setMode("page");
+    $("#url").value = b.dataset.url;
+    $("#form").requestSubmit();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+  draw();
+  return el;
+}
+
+function renderSiteAI(ai) {
+  $("#site-ai-score").innerHTML = `<div class="ring" style="--v:${ai.score};--c:${ringColor(ai.score)}"><span>${ai.score}</span></div>
+    <div><div class="label">AI ocjena sajta</div><h3>${esc(ai.siteTopic)}</h3></div>`;
+  $("#site-ai-slot").innerHTML = `
+    <section class="panel">
+      <h2>AI plan za cijeli sajt</h2>
+      <p>${esc(ai.summary)}</p>
+      <div><span class="label">Brze pobjede</span><ul class="clean" style="margin-top:6px">${ai.quickWins.map((q) => `<li>${esc(q)}</li>`).join("")}</ul></div>
+    </section>
+    <section class="panel">
+      <h2>Problemi na nivou sajta</h2>
+      <div class="issues">${ai.sitewideIssues.map((i) => `
+        <div class="issue" data-p="${esc(i.priority)}">
+          <div class="issue-top"><span class="pill p-${esc(i.priority)}">${esc(i.priority)}</span><span class="label">${i.affectedPages} stranica</span></div>
+          <h3>${esc(i.problem)}</h3>
+          <p class="fix"><b>Rješenje:</b> ${esc(i.fix)}</p>
+        </div>`).join("")}</div>
+    </section>
+    <section class="panel">
+      <h2>Stranice koje prve treba popraviti</h2>
+      <div class="issues">${ai.pagePriorities.map((p) => `
+        <div class="issue">
+          <h3>${esc(pathOf(p.url))}</h3>
+          <p class="why">${esc(p.reason)}</p>
+          <ul class="clean">${p.actions.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>
+        </div>`).join("")}</div>
+    </section>
+    <section class="panel">
+      <div class="grid2">
+        <div><h2>Strategija sadržaja</h2><ul class="clean">${ai.contentStrategy.map((c) => `<li>${esc(c)}</li>`).join("")}</ul></div>
+        <div><h2>Interno linkovanje</h2><ul class="clean">${ai.internalLinking.map((c) => `<li>${esc(c)}</li>`).join("")}</ul></div>
+      </div>
+    </section>
+    <p class="label">Model: ${esc(ai.model)} · tokeni: ${ai.usage.input} ulaz / ${ai.usage.output} izlaz</p>`;
+}
+
+async function runSiteScan(url, language) {
+  const maxPages = Number($("#max-pages").value);
+  const progress = renderProgress();
+  $("#results").append(progress);
+  siteAbort = new AbortController();
+  $("#stop").hidden = false;
+  setStatus("Skeniram sajt…");
+  const pages = [];
+  const errors = [];
+  let meta = null;
+  let summary = null;
+  const log = (html) => {
+    const live = $("#sp-live");
+    live.insertAdjacentHTML("afterbegin", `<div>${html}</div>`);
+  };
+  try {
+    await streamSiteScan(url, maxPages, (ev) => {
+      if (ev.type === "discovered") {
+        const { type, total, ...rest } = ev;
+        meta = rest;
+        $("#sp-count").textContent = `0 / ${ev.total}`;
+        $("#sp-source").textContent = ev.source === "sitemap"
+          ? `Pronađeno ${ev.total} stranica u sitemapu${ev.total >= ev.limitedTo ? ` (ograničeno na ${ev.limitedTo})` : ""}.`
+          : `Sitemap nije pronađen, skeniram ${ev.total} linkova s početne stranice.`;
+        if (!ev.total) throw new Error("Nije pronađena nijedna stranica za skeniranje.");
+      } else if (ev.type === "page" || ev.type === "pageError") {
+        $("#sp-count").textContent = `${ev.done} / ${ev.total}`;
+        $("#sp-bar").style.width = `${Math.round((ev.done / ev.total) * 100)}%`;
+        if (ev.type === "page") { pages.push(ev.page); log(`${ev.page.score} · ${esc(pathOf(ev.page.finalUrl))}`); }
+        else { errors.push({ url: ev.url, error: ev.error }); log(`<span class="bad">greška · ${esc(pathOf(ev.url))} · ${esc(ev.error)}</span>`); }
+      } else if (ev.type === "done") {
+        summary = ev.summary;
+      } else if (ev.type === "error") {
+        throw new Error(ev.error);
+      }
+    }, siteAbort.signal);
+  } catch (err) {
+    if (err.name !== "AbortError") throw err;
+  } finally {
+    $("#stop").hidden = true;
+  }
+
+  // A stopped scan still gets a report for the pages finished so far.
+  if (!summary) {
+    if (!pages.length) throw new Error("Skeniranje je zaustavljeno prije nego što je ijedna stranica obrađena.");
+    summary = await post("/api/site-summary", { pages, errors, meta });
+  }
+  progress.remove();
+  $("#results").append(renderSite(summary, pages));
+  if (!pages.some((p) => p.status < 400)) return;
+
+  setStatus(`AI analizira ${pages.length} stranica i piše plan za sajt (obično 30–90 sekundi)…`);
+  try {
+    renderSiteAI(await post("/api/site-ai", { summary, pages, language }));
+  } catch (err) {
+    showError(err.message);
+    $("#site-ai-score h3").textContent = "AI analiza nije dostupna";
+  }
+}
+
 $("#form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const url = $("#url").value.trim();
@@ -351,6 +666,7 @@ $("#form").addEventListener("submit", async (e) => {
   showError("");
   $("#results").innerHTML = "";
   try {
+    if (mode === "site") return await runSiteScan(url, language);
     setStatus("Skeniram stranicu…");
     const scan = await post("/api/scan", { url });
     $("#results").append(renderScan(scan));

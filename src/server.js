@@ -3,7 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import { crawl } from "./crawler.js";
-import { analyzeWithAI } from "./ai.js";
+import { analyzeWithAI, analyzeSiteWithAI } from "./ai.js";
+import { scanSite, summarizeSite } from "./site.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -51,6 +52,56 @@ app.post("/api/analyze", async (req, res) => {
     console.error(err);
     const status = err instanceof Anthropic.RateLimitError ? 429 : 502;
     res.status(status).json({ scan, error: `AI analiza nije uspjela: ${friendlyError(err)}` });
+  }
+});
+
+// Site-wide scan from the sitemap. Streams NDJSON progress events so the UI can show each page as it finishes.
+app.post("/api/site-scan", async (req, res) => {
+  const controller = new AbortController();
+  res.on("close", () => controller.abort());
+  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache");
+  const send = (event) => {
+    if (!res.writableEnded) res.write(JSON.stringify(event) + "\n");
+  };
+  try {
+    await scanSite(req.body?.url, { maxPages: req.body?.maxPages, onEvent: send, signal: controller.signal });
+  } catch (err) {
+    send({ type: "error", error: friendlyError(err) });
+  }
+  res.end();
+});
+
+// Summary for a scan the user stopped early, built from the pages that finished.
+app.post("/api/site-summary", (req, res) => {
+  const { pages, errors, meta } = req.body || {};
+  if (!Array.isArray(pages)) return res.status(400).json({ error: "Nedostaju stranice." });
+  const m = meta || {};
+  res.json(
+    summarizeSite(pages, Array.isArray(errors) ? errors : [], {
+      origin: m.origin ?? null,
+      source: m.source ?? "sitemap",
+      sitemapsUsed: m.sitemapsUsed ?? [],
+      robotsTxtFound: !!m.robotsTxtFound,
+      sitemapFound: !!m.sitemapFound,
+      blockedByRobots: m.blockedByRobots ?? [],
+      limitedTo: m.limitedTo ?? pages.length,
+      stoppedEarly: true,
+    }),
+  );
+});
+
+app.post("/api/site-ai", async (req, res) => {
+  const { summary, pages, language } = req.body || {};
+  if (!summary || !Array.isArray(pages) || !pages.length) {
+    return res.status(400).json({ error: "Nedostaju rezultati skeniranja sajta." });
+  }
+  try {
+    res.json(await analyzeSiteWithAI(summary, pages, { language: language || "bosanski" }));
+  } catch (err) {
+    console.error(err);
+    const status = err instanceof Anthropic.RateLimitError ? 429 : 502;
+    res.status(status).json({ error: `AI analiza nije uspjela: ${friendlyError(err)}` });
   }
 });
 

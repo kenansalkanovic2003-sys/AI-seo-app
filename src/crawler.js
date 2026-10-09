@@ -43,7 +43,7 @@ function isPrivateAddress(address) {
 }
 
 // Blocks requests to localhost / internal networks so the server can't be used to probe them.
-async function assertPublicHost(url) {
+export async function assertPublicHost(url) {
   if (process.env.ALLOW_PRIVATE_HOSTS === "1") return;
   const host = url.hostname.replace(/^\[|\]$/g, "");
   if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".internal")) {
@@ -59,7 +59,7 @@ async function assertPublicHost(url) {
   }
 }
 
-async function fetchWithTimeout(url, options = {}) {
+export async function fetchWithTimeout(url, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -103,12 +103,12 @@ async function fetchPage(startUrl) {
   throw new Error("Previše preusmjeravanja (redirect loop).");
 }
 
-async function fetchText(url) {
+export async function fetchText(url, maxChars = 20000) {
   try {
     await assertPublicHost(url);
     const res = await fetchWithTimeout(url);
     if (!res.ok) return null;
-    return (await res.text()).slice(0, 20000);
+    return (await res.text()).slice(0, maxChars);
   } catch {
     return null;
   }
@@ -257,7 +257,12 @@ function runChecks(page, data, robotsTxt, sitemapFound) {
   return { checks, score };
 }
 
-export async function crawl(inputUrl) {
+export function parseRobotsSitemaps(robotsTxt) {
+  return (robotsTxt?.match(/^sitemap:\s*(\S+)/gim) || []).map((l) => l.replace(/^sitemap:\s*/i, ""));
+}
+
+// siteFiles lets a site-wide scan pass robots.txt/sitemap info once instead of refetching per page.
+export async function crawl(inputUrl, { siteFiles } = {}) {
   const url = normalizeUrl(inputUrl);
   const page = await fetchPage(url);
   const contentType = page.headers["content-type"] || "";
@@ -269,10 +274,14 @@ export async function crawl(inputUrl) {
   }
   const data = extract(page.html, page.finalUrl);
   const origin = page.finalUrl.origin;
-  const robotsTxt = await fetchText(new URL("/robots.txt", origin));
-  const sitemapUrls = (robotsTxt?.match(/^sitemap:\s*(\S+)/gim) || []).map((l) => l.replace(/^sitemap:\s*/i, ""));
-  let sitemapFound = sitemapUrls.length > 0;
-  if (!sitemapFound) sitemapFound = !!(await fetchText(new URL("/sitemap.xml", origin)));
+  let robotsTxt, sitemapUrls, sitemapFound;
+  if (siteFiles) {
+    ({ robotsTxt, sitemapUrls, sitemapFound } = siteFiles);
+  } else {
+    robotsTxt = await fetchText(new URL("/robots.txt", origin));
+    sitemapUrls = parseRobotsSitemaps(robotsTxt);
+    sitemapFound = sitemapUrls.length > 0 || !!(await fetchText(new URL("/sitemap.xml", origin)));
+  }
 
   const { checks, score } = runChecks(page, data, robotsTxt, sitemapFound);
   return {
